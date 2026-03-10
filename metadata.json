@@ -1,0 +1,5 @@
+{
+  "name": "Kalkulator GWC",
+  "description": "Symulator opłacalności Gruntowego Wymiennika Ciepła (GWC) bazujący na modelach fizycznych.",
+  "requestFramePermissions": []
+}
