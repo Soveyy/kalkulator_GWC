@@ -334,6 +334,7 @@ export function _jeden_rok(
   let tryb_chlodzenia_aktywny = false;
 
   let godziny_grzanie = 0;
+  let licznik_faktycznego_grzania = 0;
   let godziny_chlodzenie = 0;
   let godziny_bypass = 0;
   let suma_t_zewn_zima = 0.0;
@@ -343,6 +344,16 @@ export function _jeden_rok(
   const szczyty_chlodnicze_kW: Record<number, number> = { 5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0 };
   const dane_wykres: any[] = [];
   let prev_status: string | null = null;
+
+  const miesieczne_statystyki = Array.from({ length: 12 }, (_, i) => ({
+    miesiac: i + 1,
+    godziny_grzanie: 0,
+    godziny_chlodzenie: 0,
+    godziny_bypass: 0,
+    oszczednosc_grzalka_kwh: 0,
+    oszczednosc_ogrzewanie_kwh: 0,
+    dostarczony_chlod_kwh: 0,
+  }));
 
   const wspolczynnik_relaksacji = 1.0 - Math.exp(-3600.0 / tau_reg);
   const t_frost = oblicz_prog_szronienia(t_wewn_zima, sprawnosc_reku, typ_reku);
@@ -431,18 +442,27 @@ export function _jeden_rok(
       const moc_jawna_powietrza_kw =
         (m_dot_gwc * cp_gwc * (t_do_reku - t_zewn)) / 1000.0;
 
-      if (t_do_reku > t_zewn) {
+      if (gwc_pomaga_zima) {
         godziny_grzanie += 1;
-        suma_t_zewn_zima += t_zewn;
-        suma_t_gwc_zima += t_do_reku;
-      } else if (t_do_reku < t_zewn) {
+        miesieczne_statystyki[miesiac - 1].godziny_grzanie += 1;
+        if (t_do_reku > t_zewn) {
+          licznik_faktycznego_grzania += 1;
+          suma_t_zewn_zima += t_zewn;
+          suma_t_gwc_zima += t_do_reku;
+        }
+      } else if (gwc_pomaga_lato) {
         godziny_chlodzenie += 1;
+        miesieczne_statystyki[miesiac - 1].godziny_chlodzenie += 1;
+      } else {
+        godziny_bypass += 1;
+        miesieczne_statystyki[miesiac - 1].godziny_bypass += 1;
       }
     } else {
       t_do_reku = t_zewn;
       m_dot_gwc = m_dot_baza;
       cp_gwc = cp_zewn;
       godziny_bypass += 1;
+      miesieczne_statystyki[miesiac - 1].godziny_bypass += 1;
     }
 
     t_zloza += (t_kusuda - t_zloza) * wspolczynnik_relaksacji;
@@ -483,6 +503,8 @@ export function _jeden_rok(
       t_wejscie_gwc = t_frost_target;
     }
 
+    miesieczne_statystyki[miesiac - 1].oszczednosc_grzalka_kwh += (moc_grzalki_baza_W - moc_grzalki_gwc_W) / 1000.0;
+
     const t_naw_gwc = oblicz_t_nawiewu(
       t_wejscie_gwc,
       t_wewn_eff,
@@ -495,6 +517,7 @@ export function _jeden_rok(
     if (!tryb_chlodzenia_aktywny && !zablokuj_grzanie && t_zewn < t_wewn_zima) {
       moc_dogrzewania_gwc_W = m_dot_gwc * oblicz_cp(t_naw_gwc) * (t_wewn_zima - t_naw_gwc);
       energia_dogrzewania_gwc_kwh += moc_dogrzewania_gwc_W / 1000.0;
+      miesieczne_statystyki[miesiac - 1].oszczednosc_ogrzewanie_kwh += (moc_dogrzewania_baza_W - moc_dogrzewania_gwc_W) / 1000.0;
       
       // Zmniejszenie projektowej straty ciepła budynku (bez uwzględniania grzałki wstępnej)
       const oszczednosc_mocy_W = moc_dogrzewania_baza_W - moc_dogrzewania_gwc_W;
@@ -503,8 +526,11 @@ export function _jeden_rok(
         max_moc_grzewcza_oszczednosc_W = oszczednosc_mocy_W;
       }
     } else if (!zablokuj_chlodzenie && t_zewn >= t_aktywacja_eff) {
-      chlod_gwc_kwh +=
-        (m_dot_gwc * oblicz_cp(t_naw_gwc) * (t_naw_gwc - t_wewn_lato)) / 1000.0;
+      const chlod_gwc_W = (m_dot_gwc * oblicz_cp(t_naw_gwc) * (t_naw_gwc - t_wewn_lato));
+      chlod_gwc_kwh += chlod_gwc_W / 1000.0;
+      
+      const chlod_baza_W = (m_dot_baza * oblicz_cp(t_naw_baza) * (t_naw_baza - t_wewn_lato));
+      miesieczne_statystyki[miesiac - 1].dostarczony_chlod_kwh += (chlod_baza_W - chlod_gwc_W) / 1000.0;
     }
 
     if (status_gwc === "AKTYWNE" && t_naw_gwc < t_wewn_lato && t_zewn >= t_wewn_lato) {
@@ -547,9 +573,9 @@ export function _jeden_rok(
         energia_grzalki_baza_kwh - energia_grzalki_gwc_kwh,
       Szczytowa_Moc_Grzewcza_Oszczednosc_W: max_moc_grzewcza_oszczednosc_W,
       Srednia_T_Zewn_Gdy_GWC_Grzalo:
-        godziny_grzanie > 0 ? suma_t_zewn_zima / godziny_grzanie : 0,
+        licznik_faktycznego_grzania > 0 ? suma_t_zewn_zima / licznik_faktycznego_grzania : 0,
       Srednia_T_Po_GWC_Gdy_GWC_Grzalo:
-        godziny_grzanie > 0 ? suma_t_gwc_zima / godziny_grzanie : 0,
+        licznik_faktycznego_grzania > 0 ? suma_t_gwc_zima / licznik_faktycznego_grzania : 0,
       Min_Temperatura_Zloza: min_t_zloza,
     },
     Lato: {
@@ -559,6 +585,12 @@ export function _jeden_rok(
       Maksymalna_Moc_Lipiec_kW: szczyty_chlodnicze_kW[7],
       Maksymalna_Moc_Sierpien_kW: szczyty_chlodnicze_kW[8],
     },
+    Miesieczne_Statystyki: miesieczne_statystyki.map(m => ({
+      ...m,
+      oszczednosc_grzalka_kwh: Number(m.oszczednosc_grzalka_kwh.toFixed(1)),
+      oszczednosc_ogrzewanie_kwh: Number(m.oszczednosc_ogrzewanie_kwh.toFixed(1)),
+      dostarczony_chlod_kwh: Number(m.dostarczony_chlod_kwh.toFixed(1)),
+    })),
     Wykres: dane_wykres,
   };
   return { t_zloza, wyniki };
@@ -667,7 +699,8 @@ export function symulacja_rok(
         t_mean: Number(t_mean_lokalne.toFixed(2)),
         t_amp: Number(t_amp_lokalne.toFixed(2)),
         t_phase: Number(t_phase_lokalne.toFixed(0)),
-      }
+      },
+      Miesieczne_Statystyki: wyniki.Miesieczne_Statystyki,
     });
   }
 

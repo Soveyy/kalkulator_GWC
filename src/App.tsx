@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MapPin, Calculator, Info, Thermometer, Wind, Zap, DollarSign, Activity, BarChart2, BookOpen } from 'lucide-react';
 import { symulacja_rok, GRUNTY, DNRury } from './lib/simulator';
 import embeddedTmyData from './data/tmy_12375.json';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { MethodologyModal } from './components/MethodologyModal';
 
 export default function App() {
@@ -12,7 +12,8 @@ export default function App() {
   const [results, setResults] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showMonthlyStats, setShowMonthlyStats] = useState(false);
-  const [activeTab, setActiveTab] = useState<'podsumowanie' | 'wykresy'>('podsumowanie');
+  const [activeTab, setActiveTab] = useState<'podsumowanie' | 'wykresy' | 'statystyki'>('podsumowanie');
+  const [statsView, setStatsView] = useState<'godziny' | 'energia' | 'finanse'>('godziny');
   const [chartMonth, setChartMonth] = useState<number | 'all'>('all');
   const [selectedYear, setSelectedYear] = useState<number>(3);
   const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({});
@@ -49,6 +50,8 @@ export default function App() {
     scop_ogrzewania: 3.5,
     cena_pradu: 1.15,
     koszt_inwestycji: 10000,
+    includeCooling: false,
+    seer: 6.2,
   });
 
   const runSimulation = () => {
@@ -143,6 +146,31 @@ export default function App() {
 
   const currentResults = results ? results[selectedYear] : null;
 
+  const financialData = useMemo(() => {
+    if (!currentResults) return [];
+    return currentResults.Miesieczne_Statystyki.map((stat: any) => ({
+      ...stat,
+      oszczednosc_ogrzewanie_pln: (stat.oszczednosc_ogrzewanie_kwh / (params.scop_ogrzewania || 1)) * (params.cena_pradu || 0),
+      oszczednosc_grzalka_pln: stat.oszczednosc_grzalka_kwh * (params.cena_pradu || 0),
+      oszczednosc_chlodzenie_pln: params.includeCooling && params.seer ? (stat.dostarczony_chlod_kwh / params.seer) * (params.cena_pradu || 0) : 0,
+    }));
+  }, [currentResults, params.scop_ogrzewania, params.cena_pradu, params.includeCooling, params.seer]);
+
+  const coolingSavings = useMemo(() => {
+    if (!currentResults || !params.includeCooling || !params.seer) return 0;
+    return (currentResults.Lato.Dostarczony_Chlod_kWh / params.seer) * params.cena_pradu;
+  }, [currentResults, params.includeCooling, params.seer, params.cena_pradu]);
+
+  const totalSavings = useMemo(() => {
+    if (!currentResults) return 0;
+    return currentResults.Ekonomia.Calkowita_Roczna_Oszczednosc_PLN + coolingSavings;
+  }, [currentResults, coolingSavings]);
+
+  const roiYears = useMemo(() => {
+    if (totalSavings <= 0) return Infinity;
+    return params.koszt_inwestycji / totalSavings;
+  }, [params.koszt_inwestycji, totalSavings]);
+
   const yAxisDomain = useMemo(() => {
     if (chartMonth === 'all') return [-20, 35];
     switch (chartMonth) {
@@ -217,7 +245,7 @@ export default function App() {
                 Lokalizacja i Klimat
               </h2>
               <p className="text-sm text-slate-600">
-                Wbudowane dane klimatyczne (TMY) dla stacji WMO 12375.
+                Wbudowane dane klimatyczne (TMY) dla stacji WMO 12375 - Warszawa Okęcie.
               </p>
               {error && <p className="text-red-500 text-sm">{error}</p>}
 
@@ -420,8 +448,19 @@ export default function App() {
                         : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                     }`}
                   >
-                    <BarChart2 size={16} />
+                    <Activity size={16} />
                     Wykresy
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('statystyki')}
+                    className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                      activeTab === 'statystyki'
+                        ? 'border-indigo-500 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <BarChart2 size={16} />
+                    Statystyki
                   </button>
                 </div>
 
@@ -459,12 +498,12 @@ export default function App() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
                           <p className="text-sm text-emerald-700 font-medium mb-1">Roczna oszczędność całkowita</p>
-                          <p className="text-3xl font-bold text-emerald-600">{currentResults.Ekonomia.Calkowita_Roczna_Oszczednosc_PLN} PLN</p>
+                          <p className="text-3xl font-bold text-emerald-600">{totalSavings.toFixed(2)} PLN</p>
                         </div>
                         <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                           <p className="text-sm text-blue-700 font-medium mb-1">Zwrot z inwestycji (ROI)</p>
                           <p className="text-3xl font-bold text-blue-600">
-                            {currentResults.Ekonomia.ROI_Lata === Infinity ? 'Nigdy' : `${currentResults.Ekonomia.ROI_Lata} lat`}
+                            {roiYears === Infinity ? 'Nigdy' : `${roiYears.toFixed(1)} lat`}
                           </p>
                         </div>
                         <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -475,6 +514,12 @@ export default function App() {
                           <p className="text-sm text-slate-600 font-medium mb-1">Oszczędność na grzałce wstępnej</p>
                           <p className="text-xl font-bold text-slate-800">{currentResults.Ekonomia.Oszczednosc_Grzalka_PLN} PLN</p>
                         </div>
+                        {params.includeCooling && (
+                          <div className="p-4 bg-cyan-50 rounded-xl border border-cyan-100 md:col-span-2">
+                            <p className="text-sm text-cyan-700 font-medium mb-1">Oszczędność na chłodzeniu</p>
+                            <p className="text-xl font-bold text-cyan-800">{coolingSavings.toFixed(2)} PLN</p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -541,6 +586,33 @@ export default function App() {
                             <span className="font-semibold">{currentResults.Lato.Maksymalna_Moc_Sierpien_kW} kW</span>
                           </li>
                         </ul>
+                        
+                        <div className="mt-4 pt-4 border-t border-slate-100">
+                          <label className="flex items-center gap-2 cursor-pointer mb-3">
+                            <input
+                              type="checkbox"
+                              name="includeCooling"
+                              checked={params.includeCooling}
+                              onChange={(e) => setParams({ ...params, includeCooling: e.target.checked })}
+                              className="w-4 h-4 text-cyan-600 rounded border-slate-300 focus:ring-cyan-500"
+                            />
+                            <span className="text-sm font-medium text-slate-700">Uwzględnij chłodzenie w kalkulacji opłacalności</span>
+                          </label>
+                          {params.includeCooling && (
+                            <div className="flex items-center justify-between bg-cyan-50 p-3 rounded-lg border border-cyan-100">
+                              <span className="text-sm text-cyan-800 font-medium">SEER klimatyzatora:</span>
+                              <input
+                                type="number"
+                                name="seer"
+                                value={params.seer}
+                                onChange={handleParamChange}
+                                step="0.1"
+                                min="1"
+                                className="w-24 p-1.5 text-right border border-cyan-200 rounded-md focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-white"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -664,6 +736,169 @@ export default function App() {
                     </div>
                     <p className="text-xs text-slate-500 text-center mt-2">
                       Wykres przedstawia temperatury w poszczególnych godzinach dla roku 3 (ustabilizowanego). W przypadku wyłączenia GWC (bypass), linia zmienia kolor na czerwony. <strong>Kliknij element w legendzie, aby go ukryć lub pokazać.</strong>
+                    </p>
+                  </div>
+                )}
+
+                {activeTab === 'statystyki' && currentResults && (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <h2 className="text-xl font-bold flex items-center gap-2">
+                        <BarChart2 className="text-indigo-500" />
+                        Szczegółowe Statystyki Miesięczne
+                      </h2>
+                      <div className="flex space-x-2 bg-slate-100 p-1 rounded-lg">
+                        <button
+                          onClick={() => setStatsView('godziny')}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                            statsView === 'godziny'
+                              ? 'bg-white text-indigo-600 shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Godziny pracy
+                        </button>
+                        <button
+                          onClick={() => setStatsView('energia')}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                            statsView === 'energia'
+                              ? 'bg-white text-indigo-600 shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Energia
+                        </button>
+                        <button
+                          onClick={() => setStatsView('finanse')}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                            statsView === 'finanse'
+                              ? 'bg-white text-indigo-600 shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Finanse (PLN)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="h-[500px] w-full mt-6">
+                      <ResponsiveContainer width="100%" height="100%">
+                        {statsView === 'godziny' ? (
+                          <BarChart
+                            data={currentResults.Miesieczne_Statystyki}
+                            margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis 
+                              dataKey="miesiac" 
+                              tickFormatter={(val) => ['Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze', 'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru'][val - 1]}
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={{ stroke: '#cbd5e1' }}
+                            />
+                            <YAxis 
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={{ stroke: '#cbd5e1' }}
+                              label={{ value: 'Godziny', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
+                            />
+                            <Tooltip 
+                              cursor={{ fill: '#f1f5f9' }}
+                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                              formatter={(value: number, name: string) => {
+                                const names: Record<string, string> = {
+                                  godziny_grzanie: 'Grzanie',
+                                  godziny_chlodzenie: 'Chłodzenie',
+                                  godziny_bypass: 'Bypass (wyłączone)'
+                                };
+                                return [`${value} h`, names[name] || name];
+                              }}
+                              labelFormatter={(val) => `Miesiąc: ${['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'][val - 1]}`}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            <Bar dataKey="godziny_grzanie" name="Grzanie" stackId="a" fill="#f59e0b" radius={[0, 0, 4, 4]} />
+                            <Bar dataKey="godziny_chlodzenie" name="Chłodzenie" stackId="a" fill="#0ea5e9" />
+                            <Bar dataKey="godziny_bypass" name="Bypass (wyłączone)" stackId="a" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        ) : statsView === 'energia' ? (
+                          <BarChart
+                            data={currentResults.Miesieczne_Statystyki}
+                            margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis 
+                              dataKey="miesiac" 
+                              tickFormatter={(val) => ['Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze', 'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru'][val - 1]}
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={{ stroke: '#cbd5e1' }}
+                            />
+                            <YAxis 
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={{ stroke: '#cbd5e1' }}
+                              label={{ value: 'Energia (kWh)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
+                            />
+                            <Tooltip 
+                              cursor={{ fill: '#f1f5f9' }}
+                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                              formatter={(value: number, name: string) => {
+                                const names: Record<string, string> = {
+                                  oszczednosc_ogrzewanie_kwh: 'Zaoszczędzone ciepło',
+                                  oszczednosc_grzalka_kwh: 'Zaoszczędzona praca grzałki',
+                                  dostarczony_chlod_kwh: 'Dostarczony chłód'
+                                };
+                                return [`${value.toFixed(1)} kWh`, names[name] || name];
+                              }}
+                              labelFormatter={(val) => `Miesiąc: ${['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'][val - 1]}`}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            <Bar dataKey="oszczednosc_ogrzewanie_kwh" name="Zaoszczędzone ciepło" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="oszczednosc_grzalka_kwh" name="Zaoszczędzona praca grzałki" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="dostarczony_chlod_kwh" name="Dostarczony chłód" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        ) : (
+                          <BarChart
+                            data={financialData}
+                            margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis 
+                              dataKey="miesiac" 
+                              tickFormatter={(val) => ['Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze', 'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru'][val - 1]}
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={{ stroke: '#cbd5e1' }}
+                            />
+                            <YAxis 
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={{ stroke: '#cbd5e1' }}
+                              label={{ value: 'Oszczędności (PLN)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
+                            />
+                            <Tooltip 
+                              cursor={{ fill: '#f1f5f9' }}
+                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                              formatter={(value: number, name: string) => {
+                                const names: Record<string, string> = {
+                                  oszczednosc_ogrzewanie_pln: 'Oszczędność (Ciepło)',
+                                  oszczednosc_grzalka_pln: 'Oszczędność (Grzałka)',
+                                  oszczednosc_chlodzenie_pln: 'Oszczędność (Chłodzenie)'
+                                };
+                                return [`${value.toFixed(2)} PLN`, names[name] || name];
+                              }}
+                              labelFormatter={(val) => `Miesiąc: ${['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'][val - 1]}`}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            <Bar dataKey="oszczednosc_ogrzewanie_pln" name="Oszczędność (Ciepło)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="oszczednosc_grzalka_pln" name="Oszczędność (Grzałka)" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                            {params.includeCooling && (
+                              <Bar dataKey="oszczednosc_chlodzenie_pln" name="Oszczędność (Chłodzenie)" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                            )}
+                          </BarChart>
+                        )}
+                      </ResponsiveContainer>
+                    </div>
+                    <p className="text-xs text-slate-500 text-center mt-2">
+                      {statsView === 'godziny' 
+                        ? 'Wykres przedstawia sumaryczny czas pracy GWC w poszczególnych trybach dla każdego miesiąca. Całkowita liczba godzin w miesiącu to suma wszystkich trzech wartości.'
+                        : statsView === 'energia'
+                        ? 'Wykres przedstawia ilość zaoszczędzonej energii (cieplnej dla budynku, elektrycznej dla grzałki) oraz dostarczonego chłodu w poszczególnych miesiącach.'
+                        : 'Wykres przedstawia oszczędności finansowe w poszczególnych miesiącach, uwzględniając cenę prądu oraz sprawność (SCOP/SEER) urządzeń.'}
                     </p>
                   </div>
                 )}
