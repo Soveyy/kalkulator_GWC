@@ -256,7 +256,7 @@ export const MethodologyModal: React.FC<MethodologyModalProps> = ({ isOpen, onCl
               </li>
               <li>
                 <strong>Lato (Chłodzenie):</strong><br/>
-                - Uwzględniając zyski słoneczne, system wykorzystuje wewnętrzny próg aktywacji (obliczany automatycznie jako 4°C poniżej zadanej temperatury letniej, np. bazowo 20°C przy docelowych 24°C).<br/>
+                - Biorąc pod uwagę letnie zyski ciepła od słońca, algorytm bierze pod uwagę korzystanie z GWC nawet w przypadku temperatury powietrza zewnętrznego niższej niż zadana temperatura wewnętrzna. Próg aktywacji GWC wynosi 4°C poniżej zadanej temperatury wewnętrznej letniej (np. bazowo 20°C przy docelowych 24°C).<br/>
                 - Zastosowano zaawansowaną, niesymetryczną histerezę dla całego układu budynku: tryb free-coolingu włącza się, gdy temperatura rośnie powyżej progu + 1.0°C (aktywacja przy 21°C), a wyłącza dopiero przy spadku o 2.0°C poniżej progu (dezaktywacja przy 18°C). Zapewnia to maksymalne wykorzystanie darmowego chłodu w cyklu dobowym i chroni siłowniki przed taktowaniem.<br/>
                 - GWC włącza się, gdy temperatura zewnętrzna przekracza ten próg, a złoże jest chłodniejsze od powietrza o min. 1.0°C.<br/>
                 - Maszyna stanów rekuperatora otwiera bypass zawsze, gdy powietrze czerpane (z zewnątrz lub z GWC) jest chłodniejsze niż temperatura docelowa w trybie letnim, co chroni darmowy chłód z wymiennika przed ogrzaniem na wymienniku.
