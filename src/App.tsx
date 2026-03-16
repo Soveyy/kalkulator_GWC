@@ -46,7 +46,7 @@ export default function App() {
     l_rury: 25.0,
     typ_gruntu: 'srednia_glina' as keyof typeof GRUNTY,
     typ_reku: 'przeciwpradowy',
-    sprawnosc_reku: 0.85,
+    sprawnosc_reku: 85,
     scop_ogrzewania: 3.5,
     cena_pradu: 1.15,
     koszt_inwestycji: 10000,
@@ -81,7 +81,7 @@ export default function App() {
           params.z_gwc as number,
           params.typ_gruntu as any,
           params.typ_reku as any,
-          params.sprawnosc_reku as number,
+          (params.sprawnosc_reku as number) / 100,
           params.scop_ogrzewania as number,
           params.cena_pradu as number,
           params.koszt_inwestycji as number,
@@ -370,8 +370,8 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Sprawność rekuperatora (0-1)</label>
-                  <input type="number" name="sprawnosc_reku" value={params.sprawnosc_reku ?? ''} onChange={handleParamChange} step="0.01" min="0" max="1" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Sprawność rekuperatora (%)</label>
+                  <input type="number" name="sprawnosc_reku" value={params.sprawnosc_reku ?? ''} onChange={handleParamChange} step="1" min="0" max="100" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
                 </div>
 
                 <div>
@@ -695,8 +695,8 @@ export default function App() {
                               const labels: Record<string, string> = {
                                 t_zewn: 'T zewn.',
                                 t_kusuda: 'T gruntu',
-                                t_do_reku_aktywne: 'T po GWC (Aktywne)',
-                                t_do_reku_bypass: 'T po GWC (Bypass)'
+                                t_do_reku_aktywne: 'T za GWC',
+                                t_do_reku_bypass: 'T (bypass)'
                               };
                               return [`${value}°C`, labels[name] || name];
                             }}
@@ -716,8 +716,8 @@ export default function App() {
                               const labels: Record<string, string> = {
                                 t_zewn: 'T zewn.',
                                 t_kusuda: 'T gruntu',
-                                t_do_reku_aktywne: 'T po GWC (Aktywne)',
-                                t_do_reku_bypass: 'T po GWC (Bypass)'
+                                t_do_reku_aktywne: 'T za GWC',
+                                t_do_reku_bypass: 'T (bypass)'
                               };
                               const isHidden = hiddenLines[entry.dataKey];
                               return (
@@ -730,7 +730,7 @@ export default function App() {
                           <Line hide={hiddenLines['t_zewn']} type="linear" dataKey="t_zewn" stroke="#94a3b8" dot={false} strokeWidth={1} name="t_zewn" />
                           <Line hide={hiddenLines['t_kusuda']} type="linear" dataKey="t_kusuda" stroke="#10b981" dot={false} strokeWidth={2} name="t_kusuda" />
                           <Line hide={hiddenLines['t_do_reku_aktywne']} type="linear" dataKey="t_do_reku_aktywne" stroke="#f59e0b" dot={false} strokeWidth={2} name="t_do_reku_aktywne" connectNulls={false} />
-                          <Line hide={hiddenLines['t_do_reku_bypass']} type="linear" dataKey="t_do_reku_bypass" stroke="#ef4444" dot={false} strokeWidth={2} name="t_do_reku_bypass" connectNulls={false} />
+                          <Line hide={hiddenLines['t_do_reku_bypass']} type="linear" dataKey="t_do_reku_bypass" stroke="#ef4444" strokeOpacity={0.6} dot={false} strokeWidth={1.5} name="t_do_reku_bypass" connectNulls={false} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
